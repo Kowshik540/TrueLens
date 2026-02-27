@@ -10,9 +10,9 @@ app = FastAPI(title="TrueLens API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",            # Vite local
-        "http://localhost:3000",            # React local (if used)
-        "https://truelens-silk.vercel.app",  # Vercel prod
+        "http://localhost:5173",             # Vite local
+        "http://localhost:3000",             # React local (if used)
+        "https://truelens-silk.vercel.app",   # Vercel prod
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -23,6 +23,11 @@ app.add_middleware(
 class AnalyzeRequest(BaseModel):
     input_type: str  # "text" or "url"
     content: str     # article text or URL
+
+# ---- Root (optional, helps debugging) ----
+@app.get("/")
+def root():
+    return {"message": "TrueLens API is live. Use /health or POST /analyze"}
 
 # ---- Health Check ----
 @app.get("/health")
@@ -41,18 +46,18 @@ def analyze(request: AnalyzeRequest):
     result = run_investigation(request.input_type, request.content)
 
     return {
-        "verdict":          result["verdict"],
-        "verdict_type":     result["verdict_type"],
-        "total_score":      result["total_score"],
-        "confidence":       result["confidence"],
-        "fact_check_score": result["fact_check_score"],
-        "image_score":      result["image_score"],
-        "language_score":   result["language_score"],
-        "explanation":      result["explanation"],
-        "flags":            result["flags"]
+        "verdict":          result.get("verdict"),
+        "verdict_type":     result.get("verdict_type"),
+        "total_score":      result.get("total_score"),
+        "confidence":       result.get("confidence"),
+        "fact_check_score": result.get("fact_check_score"),
+        "image_score":      result.get("image_score"),
+        "language_score":   result.get("language_score"),
+        "explanation":      result.get("explanation"),
+        "flags":            result.get("flags"),
     }
 
-# ---- Local run (Render will use its own start command) ----
+# ---- Local run (Render uses its own start command) ----
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
