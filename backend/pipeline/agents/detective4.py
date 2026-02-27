@@ -5,55 +5,45 @@ from groq import Groq
 from pipeline.state import InvestigationState
 
 load_dotenv()
-
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 def detective4(state: InvestigationState) -> InvestigationState:
-    """
-    Detective 4 — Language Analyst
-    Analyzes the writing style of the article to detect
-    emotional manipulation, missing author info, vague sources,
-    and logical contradictions.
-    """
     print("\nDetective 4 — Analyzing language...")
 
     content = state["content"]
+    text = content.lower()
 
+    # Rule-based signals
+    sensational_words = ["shocking", "breaking", "you won't believe", "must read", "share before deleted"]
+    found_triggers = [w for w in sensational_words if w in text]
+
+    flags = []
+    score = 30
+
+    if found_triggers:
+        score -= 10
+        flags.append("Sensational language detected")
+
+    if text.count("!") > 5:
+        score -= 5
+        flags.append("Excessive exclamation marks")
+
+    if "according to sources" in text or "insiders say" in text:
+        score -= 5
+        flags.append("Vague sources used")
+
+    # LLM for deeper nuance
     prompt = f"""
-You are a language manipulation expert analyzing a news article.
-
-Analyze the following article for these 5 things:
-1. Emotional trigger words (SHOCKING, BREAKING, Share before deleted, etc.)
-2. Author information (is there a named author with credentials?)
-3. Source credibility (are sources named specifically or vague like "insiders say")
-4. Logical consistency (does the article contradict itself?)
-5. Overall writing pattern (does it match known fake news style?)
+Analyze writing credibility and return JSON:
+{{
+  "author_found": true or false,
+  "source_credibility": "STRONG" or "WEAK" or "VAGUE",
+  "manipulation_score": 0-100,
+  "extra_flags": ["flag one", "flag two"]
+}}
 
 Article:
 {content}
-
-Reply with ONLY a valid JSON object in this exact format:
-{{
-  "emotional_triggers": ["word1", "word2"],
-  "author_found": true or false,
-  "source_credibility": "STRONG" or "WEAK" or "VAGUE",
-  "manipulation_score": 0,
-  "language_score": 0,
-  "flags": ["flag one", "flag two"]
-}}
-
-For manipulation_score (0-100):
-- 0-20: very professional, no manipulation detected
-- 21-40: minor concerns
-- 41-60: moderate manipulation
-- 61-80: strong manipulation signs
-- 81-100: clear fake news writing patterns
-
-For language_score out of 30:
-- 25-30: clean professional writing
-- 15-24: some concerns
-- 5-14: strong manipulation detected
-- 0-4: matches fake news patterns very closely
 """
 
     try:
@@ -64,45 +54,38 @@ For language_score out of 30:
         )
 
         raw = response.choices[0].message.content.strip()
-
         if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
+            raw = raw.split("```")[1].replace("json", "").strip()
 
         result = json.loads(raw)
 
-        emotional_triggers = result.get("emotional_triggers", [])
         author_found       = result.get("author_found", False)
         source_credibility = result.get("source_credibility", "VAGUE")
         manipulation_score = int(result.get("manipulation_score", 50))
-        language_score     = int(result.get("language_score", 15))
-        flags              = result.get("flags", [])
+        flags.extend(result.get("extra_flags", []))
 
-        print(f"Detective 4 — Emotional triggers: {emotional_triggers}")
-        print(f"Detective 4 — Author found: {author_found}")
-        print(f"Detective 4 — Source credibility: {source_credibility}")
-        print(f"Detective 4 — Manipulation score: {manipulation_score}/100")
-        print(f"Detective 4 — Language score: {language_score}/30")
+        if not author_found:
+            score -= 5
+            flags.append("No author info")
 
-        return {
-            **state,
-            "emotional_triggers": emotional_triggers,
-            "author_found":       author_found,
-            "source_credibility": source_credibility,
-            "manipulation_score": manipulation_score,
-            "language_score":     language_score,
-            "flags":              flags
-        }
+        if source_credibility == "WEAK":
+            score -= 5
+        elif source_credibility == "VAGUE":
+            score -= 3
 
-    except Exception as e:
-        print(f"Detective 4 error: {e}")
-        return {
-            **state,
-            "emotional_triggers": [],
-            "author_found":       False,
-            "source_credibility": "VAGUE",
-            "manipulation_score": 50,
-            "language_score":     15,
-            "flags":              []
-        }
+    except:
+        author_found = False
+        source_credibility = "VAGUE"
+        manipulation_score = 50
+
+    score = max(0, min(score, 30))
+
+    return {
+        **state,
+        "emotional_triggers": found_triggers,
+        "author_found": author_found,
+        "source_credibility": source_credibility,
+        "manipulation_score": manipulation_score,
+        "language_score": score,
+        "flags": list(set(flags))
+    }
