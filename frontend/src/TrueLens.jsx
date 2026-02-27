@@ -364,11 +364,17 @@ const styles = `
 
 // ─── Mock API (swap with real backend later) ──────────────────
 async function analyzeArticle(inputType, content) {
-  const res = await fetch("https://truelens-backend-snk4.onrender.com", {
+  const res = await fetch("https://truelens-backend-snk4.onrender.com/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ input_type: inputType, content })
   });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "API Error");
+  }
+
   return res.json();
 }
 
